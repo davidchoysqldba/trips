@@ -87,7 +87,6 @@ def transform(rows: Iterable) -> Iterable[Dict]:
                     error = True
                 r[field] = transformed_value
             if not error:
-                print('transform: ', r)
                 yield r
         except Exception as error:
             logger.exception('error parsing start_time and end_time', r)
@@ -102,7 +101,6 @@ def load(trips: Iterable[Dict], conn: sqlite3.Connection):
     2. Insert the trip records into the database
     """
     for t in trips:
-        print(t)
         if t:
             try:
                 cur = conn.cursor()
