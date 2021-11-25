@@ -23,6 +23,17 @@ from datetime import datetime
 
 logger = logging.getLogger()
 
+def convert_float(s):
+    if str(s).isdigit() and '.' in str(s):
+        return float(s)
+    return None
+
+def convert_int(s):
+    if str(s).isdigit() and '.' not in str(s):
+        return int(s)
+    return None
+
+
 # This is supplement function for converting to posix time
 def _convert_posix_time(value, value_format="%m/%d/%Y %H:%M"):
     try:
@@ -30,7 +41,45 @@ def _convert_posix_time(value, value_format="%m/%d/%Y %H:%M"):
     except Exception as error:
         logger.exception(error)
         return None
+# posix convert fields
 dict_transform = {'start_time': _convert_posix_time, 'end_time': _convert_posix_time}
+
+
+# field check list
+dict_field_types = {'trip_id': convert_int, 'duration': convert_int, 'bike_id': convert_int, 'plan_duration': convert_int}
+def field_type_checker(field_name: str, field_type: str):
+    return dict_field_types[field_name] == type(field_type)
+
+
+# This function is used to convert posix fields and check field types
+def field_checker(row: Dict):
+    return_row = row.copy()
+    error = False
+    
+    # loop through posix time fields
+    for trans_field_name, trans_field_function in dict_transform.items():
+        trans_value = trans_field_function(return_row[trans_field_name])
+        # print(trans_value)
+        if trans_value == None:
+            logger.exception(f"Error converting to posix time: {row}")
+            error = True
+            break
+        else:
+            return_row[trans_field_name] = trans_value
+    
+    # loop through number fields to check
+    if error != True:
+        for convert_field_name, convert_field_type in dict_field_types.items():
+            convert_value = convert_field_type(return_row[convert_field_name])
+            if  convert_value == None:
+                logger.exception(f"Error invalid data type for: {row}")
+                error = True
+                break
+            else:
+                return_row[convert_field_name] = convert_value
+    
+    if error != True:
+        return return_row
 
 
 def create_db(name: str = "trips.db") -> sqlite3.Connection:
@@ -78,19 +127,9 @@ def transform(rows: Iterable) -> Iterable[Dict]:
     5. Return an iterable collection of transformed rows as trip dictionaries to be loaded into our trips table
     """
     for r in rows:
-        try:
-            error = False
-            for field, transform_function in dict_transform.items():
-                transformed_value = transform_function(r[field])
-                if transformed_value == None:
-                    # yield None
-                    error = True
-                r[field] = transformed_value
-            if not error:
-                yield r
-        except Exception as error:
-            logger.exception('error parsing start_time and end_time', r)
-            # yield None
+        row = field_checker(r)
+        if row:
+            yield row
 
 
 def load(trips: Iterable[Dict], conn: sqlite3.Connection):
@@ -102,6 +141,7 @@ def load(trips: Iterable[Dict], conn: sqlite3.Connection):
     """
     for t in trips:
         if t:
+            # print(t)
             try:
                 cur = conn.cursor()
                 cur.execute('INSERT INTO trips VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', tuple(t.values()))
@@ -109,9 +149,6 @@ def load(trips: Iterable[Dict], conn: sqlite3.Connection):
                 logger.exception('error inserting int trips table', t)
     conn.commit()
     cur.execute('select * from trips')
-    print('-----------------------------------------')
-    for r in cur.fetchall():
-        print(r)
 
 
 def main(fname) -> None:
